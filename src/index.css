@@ -1,0 +1,204 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 215 25% 20%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 25% 20%;
+
+    --primary: 210 60% 25%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 50% 35%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 210 20% 94%;
+    --muted-foreground: 215 15% 50%;
+
+    --accent: 210 40% 90%;
+    --accent-foreground: 210 60% 25%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 70% 40%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 45 95% 50%;
+    --warning-foreground: 0 0% 15%;
+
+    --danger: 0 85% 55%;
+    --danger-foreground: 0 0% 100%;
+
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 210 60% 25%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 210 55% 22%;
+    --sidebar-foreground: 210 20% 95%;
+    --sidebar-primary: 210 40% 90%;
+    --sidebar-primary-foreground: 210 60% 25%;
+    --sidebar-accent: 210 50% 30%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 210 45% 28%;
+    --sidebar-ring: 210 60% 50%;
+
+    --header-background: 210 50% 35%;
+    --header-foreground: 0 0% 100%;
+
+    --table-header: 210 45% 28%;
+    --table-header-foreground: 0 0% 100%;
+    --table-row-alt: 210 20% 96%;
+
+    --gauge-green: 142 70% 45%;
+    --gauge-yellow: 45 95% 55%;
+    --gauge-red: 0 80% 55%;
+  }
+
+  .dark {
+    --background: 215 25% 12%;
+    --foreground: 210 20% 95%;
+    --card: 215 25% 16%;
+    --card-foreground: 210 20% 95%;
+    --popover: 215 25% 16%;
+    --popover-foreground: 210 20% 95%;
+    --primary: 210 50% 60%;
+    --primary-foreground: 215 25% 12%;
+    --secondary: 210 40% 45%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 215 20% 20%;
+    --muted-foreground: 215 15% 60%;
+    --accent: 210 30% 25%;
+    --accent-foreground: 210 50% 80%;
+    --destructive: 0 60% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 20% 22%;
+    --input: 215 20% 22%;
+    --ring: 210 50% 60%;
+    --sidebar-background: 215 30% 10%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 210 50% 60%;
+    --sidebar-primary-foreground: 215 25% 12%;
+    --sidebar-accent: 215 25% 18%;
+    --sidebar-accent-foreground: 210 20% 90%;
+    --sidebar-border: 215 20% 18%;
+    --sidebar-ring: 210 50% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    direction: rtl;
+  }
+
+  body {
+    @apply bg-background text-foreground font-cairo;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    @apply bg-card/90 backdrop-blur-sm border border-border shadow-lg;
+  }
+
+  .gradient-header {
+    background: linear-gradient(135deg, hsl(var(--header-background)) 0%, hsl(var(--primary)) 100%);
+  }
+
+  .gradient-sidebar {
+    background: linear-gradient(180deg, hsl(var(--sidebar-background)) 0%, hsl(210 50% 18%) 100%);
+  }
+
+  .table-header-gradient {
+    background: linear-gradient(90deg, hsl(var(--table-header)) 0%, hsl(210 50% 32%) 100%);
+  }
+
+  .status-cell-danger {
+    @apply bg-destructive/90 text-destructive-foreground;
+  }
+
+  .status-cell-warning {
+    @apply bg-warning/90 text-warning-foreground;
+  }
+
+  .status-cell-success {
+    @apply bg-success/90 text-success-foreground;
+  }
+
+  .hover-scale {
+    @apply transition-transform duration-200 hover:scale-[1.02];
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200;
+    @apply hover:bg-sidebar-accent text-sidebar-foreground;
+  }
+
+  .sidebar-item-active {
+    @apply bg-sidebar-accent text-sidebar-primary font-semibold;
+  }
+
+  .gauge-container {
+    @apply relative w-28 h-16 overflow-hidden;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted rounded-full;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/30 rounded-full hover:bg-muted-foreground/50;
+}
+
+/* Animation keyframes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-slide-in {
+  animation: slideInRight 0.4s ease-out forwards;
+}
