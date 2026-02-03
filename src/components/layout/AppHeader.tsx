@@ -1,4 +1,4 @@
-import { Bell, Settings, User, HelpCircle } from "lucide-react";
+import { Bell, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -60,14 +60,6 @@ export function AppHeader({ title = "نظام بطاقة الأداء المتو
       </div>
 
       <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-header-foreground hover:bg-white/10"
-        >
-          <HelpCircle className="w-5 h-5" />
-        </Button>
-
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -111,13 +103,6 @@ export function AppHeader({ title = "نظام بطاقة الأداء المتو
           </PopoverContent>
         </Popover>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-header-foreground hover:bg-white/10"
-        >
-          <Settings className="w-5 h-5" />
-        </Button>
         <div className="w-px h-6 bg-white/20 mx-2" />
         <Button
           variant="ghost"

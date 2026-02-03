@@ -60,11 +60,12 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-primary text-primary-foreground">
+              <th className="px-3 py-3 text-right font-semibold border-l border-white/20">إسم المؤشر</th>
               <th className="px-3 py-3 text-right font-semibold border-l border-white/20">المنظور</th>
               <th className="px-3 py-3 text-center font-semibold border-l border-white/20">نسبة الانجاز المنظور</th>
               <th className="px-3 py-3 text-right font-semibold border-l border-white/20">الهدف</th>
+              <th className="px-3 py-3 text-center font-semibold border-l border-white/20">نسبة انجاز الهدف</th>
               <th className="px-3 py-3 text-center font-semibold border-l border-white/20">وزن الهدف</th>
-              <th className="px-3 py-3 text-right font-semibold border-l border-white/20">إسم المؤشر</th>
               <th className="px-3 py-3 text-center font-semibold border-l border-white/20">وزن المؤشر</th>
               <th className="px-3 py-3 text-center font-semibold border-l border-white/20">نسبة الانجاز</th>
               <th className="px-3 py-3 text-center font-semibold border-l border-white/20">المستهدف</th>
@@ -94,6 +95,12 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
                         (perspectiveIdx + goalIdx + rowIdx) % 2 === 0 ? "bg-background" : "bg-table-row-alt"
                       )}
                     >
+                      {/* Indicator name - MOVED TO FIRST */}
+                      <td className="px-3 py-3 text-right border-l border-border">
+                        <span className="text-primary font-medium">{row.indicatorCode}</span>
+                        <span className="text-foreground"> - {row.indicator}</span>
+                      </td>
+
                       {/* Perspective cell */}
                       {showPerspective && (
                         <td
@@ -127,6 +134,16 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
                         </td>
                       )}
 
+                      {/* Goal Completion cell */}
+                      {showGoal && (
+                        <td
+                          rowSpan={goalData.rows.length}
+                          className="px-3 py-3 text-center border-l border-border align-middle font-bold"
+                        >
+                          {row.goalCompletion.toFixed(1)}%
+                        </td>
+                      )}
+
                       {/* Goal weight */}
                       {showGoal && (
                         <td
@@ -136,12 +153,6 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
                           {goalData.goalWeight}
                         </td>
                       )}
-
-                      {/* Indicator name */}
-                      <td className="px-3 py-3 text-right border-l border-border">
-                        <span className="text-primary font-medium">{row.indicatorCode}</span>
-                        <span className="text-foreground"> - {row.indicator}</span>
-                      </td>
 
                       {/* Weight */}
                       <td className="px-3 py-3 text-center border-l border-border font-medium">

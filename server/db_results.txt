@@ -1,0 +1,7 @@
+[
+  {
+    "table_name": "notifications",
+    "constraint_name": "notifications_kpi_id_fkey",
+    "definition": "FOREIGN KEY (kpi_id) REFERENCES kpis(id)"
+  }
+]

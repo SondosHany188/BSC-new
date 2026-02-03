@@ -39,11 +39,8 @@ export function DepartmentsProvider({ children }: { children: ReactNode }) {
                   row.icon_name === 'FileText' ? FileText :
                     row.icon_name === 'Users' ? Users : Building,
             children: [
-              { id: `${id}-vision`, label: "١- الرؤية", href: `/${id}/vision` },
-              { id: `${id}-map`, label: "٢- الخريطة الاستراتيجية", href: `/${id}/strategic-map` },
-              { id: `${id}-indicators`, label: "٣- المؤشرات", href: `/${id}/indicators` },
-              { id: `${id}-initiatives`, label: "٤- المبادرات", href: `/${id}/initiatives` },
-              { id: `${id}-reports`, label: "٥- التقارير", href: `/${id}/reports` },
+              { id: `${id}-indicators`, label: "١- المؤشرات", href: `/${id}/indicators` },
+              { id: `${id}-reports`, label: "٢- التقارير", href: `/${id}/reports` },
             ]
           };
         }

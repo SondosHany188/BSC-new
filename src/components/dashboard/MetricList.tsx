@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronLeft, Square, Circle, Trash2 } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { ChevronDown, ChevronLeft, Square, Circle, Trash2, Pencil } from "lucide-react";
+import { useDepartments } from "@/contexts/DepartmentsContext";
 import { cn } from "@/lib/utils";
+import { HistoryDialog } from "@/components/dashboard/HistoryDialog";
 
 interface MetricItem {
   id: string;
@@ -27,6 +30,7 @@ interface MetricSubCategory {
   id: string;
   name: string;
   color: "red" | "green" | "yellow" | "gray";
+  completion: number;
   items?: MetricItem[];
 }
 
@@ -38,28 +42,72 @@ const colorMap = {
 };
 
 export function MetricList() {
+  const navigate = useNavigate();
+  const { department: deptId } = useParams<{ department: string }>();
+  const { departments } = useDepartments();
   const [categories, setCategories] = useState<MetricCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [expandedSubcategories, setExpandedSubcategories] = useState<string[]>([]);
   const [filter, setFilter] = useState("No filter");
 
+  const periodMap: Record<string, string> = {
+    daily: "يومي",
+    weekly: "أسبوعي",
+    monthly: "شهري",
+    quarterly: "ربع سنوي",
+    annually: "سنوي",
+    "يومي": "يومي",
+    "أسبوعي": "أسبوعي",
+    "شهري": "شهري",
+    "ربع سنوي": "ربع سنوي",
+    "سنوي": "سنوي"
+  };
+
   const fetchData = async () => {
     try {
       const response = await fetch('http://localhost:3002/api/reports');
       const data = await response.json();
 
+      const perspectivesList = ["المالي", "العملاء", "العمليات الداخلية", "التعلم والنمو"];
       const categoryMap: Record<string, MetricCategory> = {};
 
+      const activeDept = departments.find(d => d.id === deptId);
+      const activeDeptLabel = activeDept?.label;
+
+      // Track the status of the goal with the highest weight for each perspective
+      const perspectiveTopGoal: Record<string, { weight: number, color: "red" | "green" | "yellow" | "gray" }> = {};
+
+      // Pre-populate with all perspectives
+      perspectivesList.forEach(p => {
+        categoryMap[p] = {
+          id: p,
+          name: p,
+          color: "gray",
+          subcategories: []
+        };
+      });
+
       data.forEach((row: any) => {
+        // Filter by department if deptId is present
+        if (activeDeptLabel && row.department !== activeDeptLabel) return;
+
         const catId = row.perspective;
         if (!categoryMap[catId]) {
           categoryMap[catId] = {
             id: catId,
             name: catId,
-            color: row.perspective_completion >= 70 ? "green" : row.perspective_completion >= 40 ? "yellow" : "red",
+            color: "gray",
             subcategories: []
           };
+        }
+
+        const goalWeight = Number(row.goal_rate) || 0;
+        const goalStatus = row.goal_completion >= 100 ? "green" : row.goal_completion >= 70 ? "yellow" : "red";
+
+        // Update top goal tracking for perspective status
+        if (!perspectiveTopGoal[catId] || goalWeight > perspectiveTopGoal[catId].weight) {
+          perspectiveTopGoal[catId] = { weight: goalWeight, color: goalStatus as any };
         }
 
         let sub = categoryMap[catId].subcategories?.find(s => s.name === row.goal_name);
@@ -67,7 +115,8 @@ export function MetricList() {
           sub = {
             id: row.goal_id.toString(),
             name: row.goal_name,
-            color: row.goal_completion >= 70 ? "green" : row.goal_completion >= 40 ? "yellow" : "red",
+            color: goalStatus,
+            completion: row.goal_completion || 0,
             items: []
           };
           categoryMap[catId].subcategories?.push(sub);
@@ -77,13 +126,20 @@ export function MetricList() {
           id: row.kpi_id.toString(),
           name: row.indicator,
           code: `KPI-${row.kpi_id}`,
-          period: row.period || "سنوي",
+          period: periodMap[row.period?.toLowerCase()] || row.period || "سنوي",
           completion: Math.round(row.achievement),
-          status: row.status, // Use status from backend
+          status: row.status,
           target: row.target,
           currentValue: row.actual,
           hasLink: true
         });
+      });
+
+      // Apply perspective color based on the top goal's status
+      Object.keys(perspectiveTopGoal).forEach(catId => {
+        if (categoryMap[catId]) {
+          categoryMap[catId].color = perspectiveTopGoal[catId].color;
+        }
       });
 
       setCategories(Object.values(categoryMap));
@@ -103,7 +159,12 @@ export function MetricList() {
         method: 'DELETE'
       });
       if (response.ok) {
+        console.log('KPI deleted from MetricList:', id);
         fetchData();
+      } else {
+        const errorData = await response.json();
+        console.error('Delete failed in MetricList:', errorData);
+        alert("فشل الحذف: " + (errorData.error || "خطأ غير معروف"));
       }
     } catch (err) {
       console.error(err);
@@ -113,7 +174,7 @@ export function MetricList() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [deptId, departments]);
   const toggleCategory = (id: string) => {
     setExpandedCategories((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
@@ -138,7 +199,7 @@ export function MetricList() {
     <div className="glass-card rounded-xl overflow-hidden animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/50">
-        <h3 className="font-semibold text-foreground">قائمة المؤشرات</h3>
+        <h3 className="font-semibold text-foreground">المناظير</h3>
       </div>
 
       {/* Categories */}
@@ -168,7 +229,7 @@ export function MetricList() {
                       onClick={() => toggleSubcategory(sub.id)}
                       className="w-full flex items-center gap-2 px-6 py-3 hover:bg-muted/50 transition-colors border-t border-border/30 bg-muted/10"
                     >
-                      <Circle className={cn("w-3 h-3", sub.color === "gray" ? "text-muted-foreground" : `text-${sub.color}-500`)} fill="currentColor" />
+                      <Circle className={cn("w-3 h-3", sub.color === "gray" ? "text-muted-foreground" : statusColorMap[sub.color as keyof typeof statusColorMap])} fill="currentColor" />
                       {sub.items && sub.items.length > 0 ? (
                         expandedSubcategories.includes(sub.id) ? (
                           <ChevronDown className="w-4 h-4 text-muted-foreground" />
@@ -177,6 +238,12 @@ export function MetricList() {
                         )
                       ) : null}
                       <span className="text-sm font-bold text-foreground text-right flex-1">الهدف: {sub.name}</span>
+                      <div className="flex items-center gap-2 mr-4 ml-2">
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">نسبة إنجاز الهدف:</span>
+                        <span className={cn("text-xs font-bold px-2 py-0.5 rounded bg-background border border-border", statusColorMap[sub.color as keyof typeof statusColorMap])}>
+                          {Number(sub.completion).toFixed(1)}%
+                        </span>
+                      </div>
                     </button>
 
                     {/* Items table */}
@@ -185,7 +252,7 @@ export function MetricList() {
                         <table className="w-full text-xs border border-border rounded">
                           <thead>
                             <tr className="bg-muted/50">
-                              <th className="px-2 py-1.5 text-center">حذف</th>
+                              <th className="px-2 py-1.5 text-center">خيارات</th>
                               <th className="px-2 py-1.5 text-right border-l border-border">الفترة الزمنية</th>
                               <th className="px-2 py-1.5 text-center border-l border-border">نسبة الإنجاز</th>
                               <th className="px-2 py-1.5 text-center border-l border-border">المستهدف</th>
@@ -197,12 +264,27 @@ export function MetricList() {
                             {sub.items.map((item) => (
                               <tr key={item.id} className="border-t border-border hover:bg-muted/30">
                                 <td className="px-2 py-1.5 text-center">
-                                  <button
-                                    onClick={(e) => handleDelete(item.id, e)}
-                                    className="p-1 hover:bg-destructive/10 rounded-md transition-colors text-muted-foreground hover:text-destructive"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex items-center justify-center gap-1">
+                                    <HistoryDialog
+                                      kpiId={item.id}
+                                      kpiName={item.name}
+                                      onUpdate={fetchData}
+                                    />
+                                    <button
+                                      onClick={() => navigate(`/indicators/edit/${item.id}`)}
+                                      className="p-1 hover:bg-primary/10 rounded-md transition-colors text-muted-foreground hover:text-primary"
+                                      title="تعديل"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={(e) => handleDelete(item.id, e)}
+                                      className="p-1 hover:bg-destructive/10 rounded-md transition-colors text-muted-foreground hover:text-destructive"
+                                      title="حذف"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </td>
                                 <td className="px-2 py-1.5 text-right border-l border-border">{item.period}</td>
                                 <td className="px-2 py-1.5 text-center border-l border-border font-bold">

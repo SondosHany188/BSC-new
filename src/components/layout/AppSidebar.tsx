@@ -41,12 +41,7 @@ export function AppSidebar({ isCollapsed, onToggle }: AppSidebarProps) {
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
         {!isCollapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-sidebar-primary rounded-lg flex items-center justify-center">
-              <Building2 className="w-5 h-5 text-sidebar-primary-foreground" />
-            </div>
-            <span className="font-bold text-sidebar-foreground">الجامعة</span>
-          </div>
+          <div className="w-full text-right font-bold text-sidebar-foreground text-lg">IT-Blocks</div>
         )}
         <button
           onClick={onToggle}

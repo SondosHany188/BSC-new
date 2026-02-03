@@ -67,6 +67,7 @@ const App = () => (
               <Route path="/:department/indicators" element={<Indicators />} />
               <Route path="/:department/initiatives" element={<EmptyPage />} />
               <Route path="/indicators/add" element={<AddIndicator />} />
+              <Route path="/indicators/edit/:id" element={<AddIndicator />} />
               <Route path="/notifications/kpi-evaluation" element={<KPIEvaluation />} />
             </Route>
 
