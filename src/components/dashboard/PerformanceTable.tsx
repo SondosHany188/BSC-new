@@ -60,12 +60,12 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-primary text-primary-foreground">
-              <th className="px-3 py-3 text-right font-semibold border-l border-white/20">إسم المؤشر</th>
               <th className="px-3 py-3 text-right font-semibold border-l border-white/20">المنظور</th>
               <th className="px-3 py-3 text-center font-semibold border-l border-white/20">نسبة الانجاز المنظور</th>
               <th className="px-3 py-3 text-right font-semibold border-l border-white/20">الهدف</th>
-              <th className="px-3 py-3 text-center font-semibold border-l border-white/20">نسبة انجاز الهدف</th>
               <th className="px-3 py-3 text-center font-semibold border-l border-white/20">وزن الهدف</th>
+              <th className="px-3 py-3 text-center font-semibold border-l border-white/20">نسبة انجاز الهدف</th>
+              <th className="px-3 py-3 text-right font-semibold border-l border-white/20">إسم المؤشر</th>
               <th className="px-3 py-3 text-center font-semibold border-l border-white/20">وزن المؤشر</th>
               <th className="px-3 py-3 text-center font-semibold border-l border-white/20">نسبة الانجاز</th>
               <th className="px-3 py-3 text-center font-semibold border-l border-white/20">المستهدف</th>
@@ -95,12 +95,6 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
                         (perspectiveIdx + goalIdx + rowIdx) % 2 === 0 ? "bg-background" : "bg-table-row-alt"
                       )}
                     >
-                      {/* Indicator name - MOVED TO FIRST */}
-                      <td className="px-3 py-3 text-right border-l border-border">
-                        <span className="text-primary font-medium">{row.indicatorCode}</span>
-                        <span className="text-foreground"> - {row.indicator}</span>
-                      </td>
-
                       {/* Perspective cell */}
                       {showPerspective && (
                         <td
@@ -108,7 +102,7 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
                           className="px-3 py-3 text-right border-l border-border align-middle"
                         >
                           <div className="flex flex-col items-center gap-2">
-                            <MiniGauge value={perspectiveData.perspectiveCompletion} />
+                            <MiniGauge value={perspectiveData.perspectiveCompletion ?? 0} />
                             <span className="text-xs font-medium">{perspective}</span>
                           </div>
                         </td>
@@ -120,7 +114,7 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
                           rowSpan={totalPerspectiveRows}
                           className="px-3 py-3 text-center border-l border-border align-middle font-bold"
                         >
-                          {(perspectiveData.perspectiveCompletion).toFixed(1)}%
+                          {(perspectiveData.perspectiveCompletion !== null ? perspectiveData.perspectiveCompletion.toFixed(1) + "%" : "-")}
                         </td>
                       )}
 
@@ -134,16 +128,6 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
                         </td>
                       )}
 
-                      {/* Goal Completion cell */}
-                      {showGoal && (
-                        <td
-                          rowSpan={goalData.rows.length}
-                          className="px-3 py-3 text-center border-l border-border align-middle font-bold"
-                        >
-                          {row.goalCompletion.toFixed(1)}%
-                        </td>
-                      )}
-
                       {/* Goal weight */}
                       {showGoal && (
                         <td
@@ -154,6 +138,22 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
                         </td>
                       )}
 
+                      {/* Goal Completion cell */}
+                      {showGoal && (
+                        <td
+                          rowSpan={goalData.rows.length}
+                          className="px-3 py-3 text-center border-l border-border align-middle font-bold"
+                        >
+                          {row.goalCompletion !== null ? row.goalCompletion.toFixed(1) + "%" : "-"}
+                        </td>
+                      )}
+
+                      {/* Indicator name - MOVED BETWEEN GOAL WEIGHT AND INDICATOR WEIGHT */}
+                      <td className="px-3 py-3 text-right border-l border-border">
+                        <span className="text-primary font-medium">{row.indicatorCode}</span>
+                        <span className="text-foreground"> - {row.indicator}</span>
+                      </td>
+
                       {/* Weight */}
                       <td className="px-3 py-3 text-center border-l border-border font-medium">
                         {row.weight}
@@ -161,7 +161,7 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
 
                       {/* Completion */}
                       <td className={cn("px-3 py-3 text-center border-l border-border font-bold", getStatusColor(row.status))}>
-                        {row.completion.toFixed(2)}%
+                        {row.completion !== null ? `${row.completion.toFixed(2)}%` : "-"}
                       </td>
 
                       {/* Target */}
@@ -171,7 +171,7 @@ export function PerformanceTable({ title, data }: PerformanceTableProps) {
 
                       {/* Value */}
                       <td className="px-3 py-3 text-center">
-                        {row.value}
+                        {row.value !== null ? row.value : "-"}
                       </td>
                     </tr>
                   );

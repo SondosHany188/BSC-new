@@ -63,7 +63,6 @@ const App = () => (
 
               {/* Dynamic department routes - catch all for new departments */}
               <Route path="/:department/vision" element={<EmptyPage />} />
-              <Route path="/:department/strategic-map" element={<StrategicMap />} />
               <Route path="/:department/indicators" element={<Indicators />} />
               <Route path="/:department/initiatives" element={<EmptyPage />} />
               <Route path="/indicators/add" element={<AddIndicator />} />
@@ -78,6 +77,7 @@ const App = () => (
             <Route path="/open/reports" element={<MainLayout hideRightPanel><Reports /></MainLayout>} />
             <Route path="/hr/reports" element={<MainLayout hideRightPanel><Reports /></MainLayout>} />
             <Route path="/:department/reports" element={<MainLayout hideRightPanel><Reports /></MainLayout>} />
+            <Route path="/:department/strategic-map" element={<MainLayout hideRightPanel><StrategicMap /></MainLayout>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>

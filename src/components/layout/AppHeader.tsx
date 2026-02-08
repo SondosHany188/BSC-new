@@ -17,10 +17,11 @@ interface Notification {
   message: string;
   type: string;
   created_at: string;
+  target_date?: string;
   count: number;
 }
 
-export function AppHeader({ title = "نظام بطاقة الأداء المتوازن" }: AppHeaderProps) {
+export function AppHeader({ title = "نظام بطاقات الأداء المتوازن" }: AppHeaderProps) {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
@@ -89,12 +90,26 @@ export function AppHeader({ title = "نظام بطاقة الأداء المتو
                   >
                     <p className="text-sm font-medium text-foreground mb-1">{notif.message}</p>
                     <div className="flex justify-between items-center">
-                      <span className="text-xs text-muted-foreground">{formatTimeAgo(notif.created_at)}</span>
-                      {notif.count > 1 && (
-                        <span className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                          {notif.count} تنبيهات
-                        </span>
-                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {notif.target_date ? new Date(notif.target_date).toLocaleDateString('ar-EG') : formatTimeAgo(notif.created_at)}
+                      </span>
+                      {notif.target_date && (() => {
+                        const target = new Date(notif.target_date);
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        // Calculate difference in days
+                        const diffTime = today.getTime() - target.getTime();
+                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+                        if (diffDays > 0) {
+                          return (
+                            <span className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                              متأخر {diffDays} يوم
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </button>
                 ))

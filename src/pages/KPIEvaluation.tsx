@@ -11,8 +11,12 @@ interface EvaluationTask {
     department_name: string;
     perspective_name: string;
     created_at: string;
+    target_date: string; // New field
     count: number;
     actual_value?: number;
+    target_value: number;
+    critical_limit: number;
+    direction: string;
 }
 
 export default function KPIEvaluation() {
@@ -36,17 +40,20 @@ export default function KPIEvaluation() {
         fetchTasks();
     }, []);
 
-    const handleUpdateValue = async (kpiId: number, value: string) => {
+    const handleUpdateValue = async (kpiId: number, value: string, date: string) => {
         setUpdating(kpiId);
         try {
             const response = await fetch(`http://localhost:3002/api/kpis/${kpiId}/actual`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ actual: Number(value) }),
+                body: JSON.stringify({
+                    actual: Number(value),
+                    date: date
+                }),
             });
             if (response.ok) {
                 // Remove task from list after successful update
-                setTasks(prev => prev.filter(t => t.kpi_id !== kpiId));
+                setTasks(prev => prev.filter(t => t.kpi_id !== kpiId || t.target_date !== date));
             }
         } catch (err) {
             console.error('Failed to update KPI value:', err);
@@ -105,13 +112,31 @@ export default function KPIEvaluation() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 border-l border-border text-center align-middle">
-                                                {new Date(task.created_at).toLocaleDateString('ar-EG')}
-                                                <span className="block text-[10px] text-red-500 font-bold">متأخر {task.count} يوم</span>
+                                                <div className="flex flex-col items-center">
+                                                    <span className="font-bold text-primary">
+                                                        {task.target_date ? new Date(task.target_date).toLocaleDateString('ar-EG') : 'اليوم'}
+                                                    </span>
+                                                    {task.target_date && (() => {
+                                                        const target = new Date(task.target_date);
+                                                        const today = new Date();
+                                                        today.setHours(0, 0, 0, 0);
+                                                        // Calculate difference in days
+                                                        const diffTime = today.getTime() - target.getTime();
+                                                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+                                                        if (diffDays > 0) {
+                                                            return (
+                                                                <span className="text-[10px] text-red-500 font-bold">تنبيه متأخر {diffDays} يوم</span>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })()}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 border-l border-border text-center align-middle">
                                                 <div className="flex justify-center">
                                                     <Input
-                                                        id={`input-${task.kpi_id}`}
+                                                        id={`input-${task.kpi_id}-${task.target_date}`}
                                                         placeholder="0"
                                                         className="w-24 text-center font-bold"
                                                         type="number"
@@ -124,8 +149,8 @@ export default function KPIEvaluation() {
                                                     className="gap-2"
                                                     disabled={updating === task.kpi_id}
                                                     onClick={() => {
-                                                        const val = (document.getElementById(`input-${task.kpi_id}`) as HTMLInputElement)?.value;
-                                                        if (val) handleUpdateValue(task.kpi_id, val);
+                                                        const val = (document.getElementById(`input-${task.kpi_id}-${task.target_date}`) as HTMLInputElement)?.value;
+                                                        if (val) handleUpdateValue(task.kpi_id, val, task.target_date);
                                                     }}
                                                 >
                                                     {updating === task.kpi_id ? "جاري الحفظ..." : <><Save className="w-4 h-4" /> حفظ</>}

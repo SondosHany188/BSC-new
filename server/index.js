@@ -46,13 +46,14 @@ async function ensureSchema() {
     try {
         console.log('Checking database schema...');
 
-        // Add last_updated to kpis
+        // Add last_updated and created_at to kpis
         await client.query(`
             ALTER TABLE kpis 
-            ADD COLUMN IF NOT EXISTS last_updated TIMESTAMP DEFAULT NOW()
+            ADD COLUMN IF NOT EXISTS last_updated TIMESTAMP DEFAULT NOW(),
+            ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()
         `);
 
-        // Create notifications table
+        // Create notifications table with target_date
         await client.query(`
             CREATE TABLE IF NOT EXISTS notifications (
                 id SERIAL PRIMARY KEY,
@@ -61,9 +62,17 @@ async function ensureSchema() {
                 type TEXT,
                 status TEXT DEFAULT 'pending',
                 count INTEGER DEFAULT 1,
+                target_date DATE,
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
+
+        // Migration: Add target_date if missing
+        await client.query('ALTER TABLE notifications ADD COLUMN IF NOT EXISTS target_date DATE');
+        // Add unique constraint for (kpi_id, target_date)
+        try {
+            await client.query('ALTER TABLE notifications ADD CONSTRAINT unique_kpi_date UNIQUE (kpi_id, target_date)');
+        } catch (e) { /* already exists */ }
 
         // Ensure ON DELETE CASCADE is active for existing notifications table
         try {
@@ -98,7 +107,23 @@ async function ensureSchema() {
         await client.query('CREATE INDEX IF NOT EXISTS idx_kpi_entries_date ON kpi_entries(date_recorded)');
 
         // Ensure existing KPIs have a timestamp
-        await client.query('UPDATE kpis SET last_updated = NOW() WHERE last_updated IS NULL');
+        await client.query("UPDATE kpis SET last_updated = NOW() WHERE last_updated IS NULL");
+
+        // FIX: Set creation date based on the FIRST entry if it exists, otherwise leave it alone (or default to NOW via schema)
+        // This prevents "ghost notifications" for dates before the KPI actually started tracking data.
+        // FIX 2.0: "The Cleanup"
+        // Step 1: Reset ANY variable that looks like our "2024" mistake back to NOW(). 
+        // This fixes KPIs that have NO entries yet, stopping them from showing past notifications.
+        await client.query("UPDATE kpis SET created_at = NOW() WHERE created_at < '2025-01-01'");
+
+        // Step 2: For KPIs that DO have history, align their creation date to their first entry.
+        // This ensures historical notifications work effectively for data we actually have.
+        await client.query(`
+            UPDATE kpis 
+            SET created_at = subquery.first_entry
+            FROM (SELECT kpi_id, MIN(date_recorded) as first_entry FROM kpi_entries GROUP BY kpi_id) as subquery
+            WHERE kpis.id = subquery.kpi_id
+        `);
 
         // Backfill kpi_entries for existing KPIs that have no history
         await client.query(`
@@ -171,35 +196,80 @@ app.post('/api/departments', async (req, res) => {
 async function refreshNotifications() {
     const client = await pool.connect();
     try {
-        // Find daily KPIs not updated today
-        const dailyKpis = await client.query(`
-            SELECT id, name FROM kpis 
-            WHERE period = 'daily' 
-            AND (last_updated IS NULL OR last_updated < CURRENT_DATE)
-        `);
+        // Find daily KPIs
+        const dailyKpis = await client.query("SELECT id, name, created_at FROM kpis WHERE period = 'daily'");
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
         for (const kpi of dailyKpis.rows) {
-            const existing = await client.query(
-                "SELECT id, count, created_at FROM notifications WHERE kpi_id = $1 AND status = 'pending'",
-                [kpi.id]
-            );
+            // Check last 7 days
+            for (let i = 0; i < 7; i++) {
+                const targetDate = new Date(today);
+                targetDate.setDate(today.getDate() - i);
 
-            if (existing.rows.length === 0) {
-                await client.query(
-                    "INSERT INTO notifications (kpi_id, message, type) VALUES ($1, $2, 'kpi_entry')",
-                    [kpi.id, `يرجى إضافة قيمة مؤشر ${kpi.name}`]
+                // Don't look before KPI was created (compare dates only to avoid timezone/hour issues)
+                const kpiDate = new Date(kpi.created_at);
+                kpiDate.setHours(0, 0, 0, 0);
+                if (targetDate < kpiDate) continue;
+
+                // FIX: Use local YYYY-MM-DD instead of toISOString() to avoid timezone shifts
+                const dateStr = targetDate.toLocaleDateString('en-CA');
+
+                // Check if entry exists for this date
+                const entry = await client.query(
+                    "SELECT id FROM kpi_entries WHERE kpi_id = $1 AND date_recorded = $2",
+                    [kpi.id, dateStr]
                 );
-            } else {
-                const lastCreation = new Date(existing.rows[0].created_at);
-                const today = new Date();
-                if (lastCreation.toDateString() !== today.toDateString()) {
+
+                if (entry.rows.length === 0) {
+                    // Check if notification already exists
+                    const existing = await client.query(
+                        "SELECT id, status FROM notifications WHERE kpi_id = $1 AND target_date = $2",
+                        [kpi.id, dateStr]
+                    );
+
+                    if (existing.rows.length === 0) {
+                        const warningMsg = i > 0 ? ` (متأخر ${i} يوم)` : "";
+                        await client.query(
+                            "INSERT INTO notifications (kpi_id, message, type, target_date) VALUES ($1, $2, 'kpi_entry', $3)",
+                            [kpi.id, `يرجى إضافة قيمة مؤشر ${kpi.name} لتاريخ ${dateStr}${warningMsg}`, dateStr]
+                        );
+                    }
+                } else {
+                    // Resolve notification if entry exists but notification is pending
                     await client.query(
-                        "UPDATE notifications SET count = count + 1, created_at = NOW() WHERE id = $1",
-                        [existing.rows[0].id]
+                        "UPDATE notifications SET status = 'completed' WHERE kpi_id = $1 AND target_date = $2 AND status = 'pending'",
+                        [kpi.id, dateStr]
                     );
                 }
             }
         }
+
+        // Aggressive Cleanup: Remove ANY legacy notifications (no target_date or old-style counts)
+        // This ensures the user starts fresh with the new date-specific system.
+        await client.query("DELETE FROM notifications WHERE target_date IS NULL OR count > 1");
+
+        // Comprehensive Sync: Auto-complete ANY pending notification that now has a matching entry
+        // We do this AFTER the deletion to ensure only valid, date-specific alerts remain.
+        await client.query(`
+            UPDATE notifications n
+            SET status = 'completed'
+            FROM kpi_entries e
+            WHERE n.kpi_id = e.kpi_id 
+            AND n.target_date = e.date_recorded
+            AND n.status = 'pending'
+        `);
+
+        // FINAL CLEANUP: Delete any notifications that are somehow BEFORE the KPI was even created.
+        // This enforces the "First Entry Rule" on existing alerts.
+        await client.query(`
+            DELETE FROM notifications n
+            USING kpis k
+            WHERE n.kpi_id = k.id
+            AND n.target_date < k.created_at::date
+        `);
+
     } catch (err) {
         console.error('Error refreshing notifications:', err.message);
     } finally {
@@ -271,13 +341,8 @@ app.post('/api/indicators', async (req, res) => {
             [newKpi.id, actual || 0, 'Initial Creation']
         );
 
-        // 5. If daily, create a pending notification
-        if (period === 'daily') {
-            await client.query(
-                "INSERT INTO notifications (kpi_id, message, type) VALUES ($1, $2, 'kpi_entry')",
-                [newKpi.id, `يرجى إضافة قيمة مؤشر ${indicatorName}`]
-            );
-        }
+        // 5. Trigger a refresh check for notifications
+        await refreshNotifications();
 
         await client.query('COMMIT');
         res.status(201).json(kpiRes.rows[0]);
@@ -316,40 +381,180 @@ app.get('/api/notifications', async (req, res) => {
     }
 });
 
-// Update KPI value and resolve notification
-app.post('/api/kpis/:id/actual', async (req, res) => {
-    const { id } = req.params;
-    const { actual } = req.body;
+// Setup test notifications (for testing purposes)
+app.post('/api/notifications/setup-test', async (req, res) => {
+    const client = await pool.connect();
     try {
-        await pool.query(
-            "UPDATE kpis SET actual_value = $1, last_updated = NOW() WHERE id = $2",
-            [actual, id]
-        );
-        await pool.query(
-            "UPDATE notifications SET status = 'resolved' WHERE kpi_id = $1",
-            [id]
-        );
-        res.json({ success: true });
+        console.log('🧹 Cleaning all existing notifications...');
+        await client.query("DELETE FROM notifications");
+
+        console.log('📊 Getting daily KPIs...');
+        const kpis = await client.query(`
+            SELECT id, name FROM kpis 
+            WHERE period = 'daily' 
+            ORDER BY id 
+            LIMIT 4
+        `);
+
+        if (kpis.rows.length < 4) {
+            return res.status(400).json({ error: 'Not enough daily KPIs found. Need at least 4.' });
+        }
+
+        const twoDaysAgo = new Date();
+        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+        const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
+        const today = new Date().toISOString().split('T')[0];
+
+        const results = {
+            lateNotifications: [],
+            todayNotifications: []
+        };
+
+        // Create 2 notifications for 2 days ago
+        console.log('🔔 Creating 2 late notifications (2 days ago)...');
+        for (let i = 0; i < 2; i++) {
+            const kpi = kpis.rows[i];
+
+            // Delete entries from 2 days ago onwards
+            const deleted = await client.query(
+                'DELETE FROM kpi_entries WHERE kpi_id = $1 AND date_recorded >= $2 RETURNING date_recorded',
+                [kpi.id, twoDaysAgoStr]
+            );
+
+            // Create notification with created_at set to 2 days ago
+            await client.query(
+                `INSERT INTO notifications (kpi_id, message, type, count, created_at, status) 
+                 VALUES ($1, $2, 'kpi_entry', 2, $3, 'pending')`,
+                [kpi.id, `يرجى إضافة قيمة مؤشر ${kpi.name}`, twoDaysAgo]
+            );
+
+            results.lateNotifications.push({
+                kpiId: kpi.id,
+                kpiName: kpi.name,
+                deletedEntries: deleted.rows.length,
+                date: twoDaysAgoStr,
+                daysLate: 2
+            });
+        }
+
+        // Create 2 notifications for today
+        console.log('🔔 Creating 2 notifications for today...');
+        for (let i = 2; i < 4; i++) {
+            const kpi = kpis.rows[i];
+
+            // Delete today's entry if it exists
+            const deleted = await client.query(
+                'DELETE FROM kpi_entries WHERE kpi_id = $1 AND date_recorded = $2 RETURNING date_recorded',
+                [kpi.id, today]
+            );
+
+            // Create notification for today
+            await client.query(
+                `INSERT INTO notifications (kpi_id, message, type, count, created_at, status) 
+                 VALUES ($1, $2, 'kpi_entry', 0, NOW(), 'pending')`,
+                [kpi.id, `يرجى إضافة قيمة مؤشر ${kpi.name}`]
+            );
+
+            results.todayNotifications.push({
+                kpiId: kpi.id,
+                kpiName: kpi.name,
+                deletedEntries: deleted.rows.length,
+                date: today,
+                daysLate: 0
+            });
+        }
+
+        console.log('✅ Test notifications setup complete');
+        res.json({
+            success: true,
+            message: 'Test notifications created successfully',
+            ...results
+        });
+
     } catch (err) {
-        console.error('API Error (/api/kpis/:id/actual):', err.message);
-        res.status(500).json({ error: 'Failed to update KPI' });
+        console.error('Error setting up test notifications:', err.message);
+        res.status(500).json({ error: 'Failed to setup test notifications', details: err.message });
+    } finally {
+        client.release();
     }
 });
 
+
+// Update KPI actual value and resolve notification - MOVED AND MERGED with line 724 implementation
+
 // Get goals by department and perspective
 app.get('/api/goals', async (req, res) => {
-    const { departmentId, perspectiveName } = req.query;
+    const { department_id, perspectiveName } = req.query;
     try {
         const result = await pool.query(`
             SELECT g.id, g.name, g.weight 
             FROM goals g
             JOIN perspectives p ON g.perspective_id = p.id
             WHERE p.department_id = $1 AND p.name = $2
-        `, [departmentId, perspectiveName]);
+        `, [department_id, perspectiveName]);
         res.json(result.rows);
     } catch (err) {
-        console.error('API Error (/api/goals):', err.message);
-        res.status(500).json({ error: 'Database error' });
+        console.error('API Error (/api/goals GET):', err.message);
+        res.status(500).json({ error: 'Database error: ' + err.message });
+    }
+});
+
+// Add Goal (Manual Save from Card Builder)
+app.post('/api/goals', async (req, res) => {
+    const { name, department_id, perspective, weight } = req.body;
+
+    // Map perspective ID to Arabic Label if necessary
+    const perspectiveMap = {
+        'financial': 'المالي',
+        'customers': 'العملاء',
+        'operations': 'العمليات الداخلية',
+        'learning': 'التعلم والنمو'
+    };
+
+    const pName = perspectiveMap[perspective] || perspective;
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // 1. Ensure Perspective exists
+        let pRes = await client.query(
+            'SELECT id FROM perspectives WHERE name = $1 AND department_id = $2',
+            [pName, department_id]
+        );
+        let perspectiveId;
+        if (pRes.rows.length === 0) {
+            pRes = await client.query(
+                'INSERT INTO perspectives (name, department_id) VALUES ($1, $2) RETURNING id',
+                [pName, department_id]
+            );
+            perspectiveId = pRes.rows[0].id;
+        } else {
+            perspectiveId = pRes.rows[0].id;
+        }
+
+        // 2. Insert Goal
+        const gRes = await client.query(
+            'INSERT INTO goals (name, perspective_id, weight) VALUES ($1, $2, $3) RETURNING *',
+            [name, perspectiveId, weight]
+        );
+
+        await client.query('COMMIT');
+        res.status(201).json(gRes.rows[0]);
+    } catch (err) {
+        if (client) await client.query('ROLLBACK');
+        console.error('CRITICAL ERROR (/api/goals POST):', {
+            message: err.message,
+            stack: err.stack,
+            body: req.body
+        });
+        res.status(500).json({
+            error: 'Failed to create goal',
+            details: err.message,
+            code: err.code // Include PG error code if available
+        });
+    } finally {
+        client.release();
     }
 });
 
@@ -373,7 +578,9 @@ app.get('/api/reports', async (req, res) => {
                         WHERE kpi_id = k.id 
                         AND date_recorded::date = CURRENT_DATE
                     )
-                    THEN 0 
+                    THEN NULL 
+                    WHEN NOT EXISTS (SELECT 1 FROM kpi_entries WHERE kpi_id = k.id)
+                    THEN NULL
                     ELSE k.actual_value 
                 END as actual,
                 k.critical_limit,
@@ -381,7 +588,8 @@ app.get('/api/reports', async (req, res) => {
                 k.direction,
                 k.period,
                 k.description,
-                k.unit
+                k.unit,
+                (SELECT value FROM kpi_entries WHERE kpi_id = k.id ORDER BY date_recorded DESC, id DESC LIMIT 1 OFFSET 1) as previous_value
             FROM kpis k
             JOIN goals g ON k.goal_id = g.id
             JOIN perspectives p ON g.perspective_id = p.id
@@ -393,46 +601,45 @@ app.get('/api/reports', async (req, res) => {
 
         // Calculate individual KPI status and achievement
         const processedKpis = rows.map(row => {
-            let status = 'red';
-            let achievement = 0;
+            let status = 'gray'; // Default to gray if no data
+            let achievement = null; // Default to null (will be converted to 0 for aggregation but handled for display)
 
-            const actual = Number(row.actual) || 0;
+            // Strict null check for actual value
+            const hasData = row.actual !== null;
+            const actual = hasData ? Number(row.actual) : 0;
             const target = Number(row.target) || 0;
             const critical = Number(row.critical_limit) || 0;
 
-            if (row.direction === 'up') {
-                // Formula 1: Maximize (Up Arrow)
-                // Ai = (Current Value / Target) * 100
-                achievement = target > 0 ? (actual / target) * 100 : 0;
+            if (hasData) {
+                if (row.direction === 'up') {
+                    // Formula 1: Maximize (Up Arrow)
+                    achievement = target > 0 ? (actual / target) * 100 : 0;
 
-                // Status mapping (Keep existing for visual cues)
-                if (actual >= target) status = 'green';
-                else if (actual >= critical) status = 'yellow';
-                else status = 'red';
-            } else {
-                // Formula 2: Minimize (Down Arrow) - Universal Negative Polarity Formula
-                // If Value <= Target: Achievement = 100%
-                // If Value >= Failure Point (Critical): Achievement = 0%
-                // In-between: Achievement = (1 - (Value - Target) / (Failure Point - Target)) * 100
-
-                if (actual <= target) {
-                    achievement = 100;
-                    status = 'green';
-                } else if (actual >= critical) {
-                    achievement = 0;
-                    status = 'red';
+                    if (actual >= target) status = 'green';
+                    else if (actual >= critical) status = 'yellow';
+                    else status = 'red';
                 } else {
-                    const denominator = critical - target;
-                    const deficitRatio = denominator > 0 ? (actual - target) / denominator : 1;
-                    achievement = 100 * (1 - deficitRatio);
-                    status = 'yellow';
+                    // Formula 2: Minimize (Down Arrow)
+                    if (actual <= target) {
+                        achievement = 100;
+                        status = 'green';
+                    } else if (actual >= critical) {
+                        achievement = 0;
+                        status = 'red';
+                    } else {
+                        const denominator = critical - target;
+                        const deficitRatio = denominator > 0 ? (actual - target) / denominator : 1;
+                        achievement = 100 * (1 - deficitRatio);
+                        status = 'yellow';
+                    }
                 }
             }
 
             return {
                 ...row,
                 status,
-                achievement: Math.max(achievement, 0) // Allow > 100 for "Up", but floor at 0
+                achievement: achievement !== null ? Math.max(achievement, 0) : null,
+                actual: hasData ? actual : null // Explicitly return null if no data
             };
         });
 
@@ -444,11 +651,15 @@ app.get('/api/reports', async (req, res) => {
                 goalData[row.goal_id] = {
                     totalAchievement: 0,
                     weight: row.goal_rate || 0,
-                    perspective_id: row.perspective_id
+                    perspective_id: row.perspective_id,
+                    hasData: false // Track if any KPI in this goal has data
                 };
             }
-            // Add weighted KPI achievement (row.kpi_weight / 100 converts to decimal)
-            goalData[row.goal_id].totalAchievement += (row.achievement * (Number(row.kpi_weight) / 100));
+            // Add weighted KPI achievement ONLY if it exists
+            if (row.achievement !== null) {
+                goalData[row.goal_id].totalAchievement += (row.achievement * (Number(row.kpi_weight) / 100));
+                goalData[row.goal_id].hasData = true;
+            }
         });
 
         // Formula 4: Perspective Achievement (P)
@@ -457,18 +668,23 @@ app.get('/api/reports', async (req, res) => {
         Object.keys(goalData).forEach(gid => {
             const gd = goalData[gid];
             const pid = gd.perspective_id;
-            if (!perspectiveAcc[pid]) perspectiveAcc[pid] = 0;
+            if (!perspectiveAcc[pid]) perspectiveAcc[pid] = { total: 0, hasData: false };
 
-            // gd.totalAchievement is Oj
-            // gd.weight is goal weight percent
-            perspectiveAcc[pid] += (gd.totalAchievement * (gd.weight / 100));
+            // Only count goals that have data
+            if (gd.hasData) {
+                perspectiveAcc[pid].total += (gd.totalAchievement * (gd.weight / 100));
+                perspectiveAcc[pid].hasData = true;
+            }
         });
 
         const finalData = processedKpis.map(row => {
+            const gd = goalData[row.goal_id];
+            const pd = perspectiveAcc[row.perspective_id];
+
             return {
                 ...row,
-                goal_completion: goalData[row.goal_id].totalAchievement,
-                perspective_completion: perspectiveAcc[row.perspective_id]
+                goal_completion: gd.hasData ? gd.totalAchievement : null,
+                perspective_completion: pd && pd.hasData ? pd.total : null
             };
         });
 
@@ -623,29 +839,37 @@ app.get('/api/kpis/:id', async (req, res) => {
 // Update KPI Actual Value (from Notifications/Evaluation)
 app.post('/api/kpis/:id/actual', async (req, res) => {
     const { id } = req.params;
-    const { actual } = req.body;
+    const { actual, date } = req.body;
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
 
-        // 1. Insert into history (Use current date)
+        const targetDate = date || new Date().toISOString().split('T')[0];
+
+        // 1. Insert into history
         await client.query(
-            'INSERT INTO kpi_entries (kpi_id, value, date_recorded, notes) VALUES ($1, $2, CURRENT_DATE, $3)',
-            [id, actual, 'Notification Update']
+            'INSERT INTO kpi_entries (kpi_id, value, date_recorded, notes) VALUES ($1, $2, $3, $4)',
+            [id, actual, targetDate, 'Notification Update']
         );
 
-        // 2. Update Main KPI
-        // We always assume this new "actual" is the latest relevant value for now
-        await client.query(
-            'UPDATE kpis SET actual_value = $1, last_updated = NOW() WHERE id = $2',
-            [actual, id]
-        );
-
-        // 3. Mark notification as completed if exists
-        await client.query(
-            "UPDATE notifications SET status = 'completed' WHERE kpi_id = $1 AND type = 'kpi_entry'",
+        // 2. Update Main KPI with the latest entry info
+        const latestRes = await client.query(
+            'SELECT value, date_recorded FROM kpi_entries WHERE kpi_id = $1 ORDER BY date_recorded DESC LIMIT 1',
             [id]
+        );
+
+        if (latestRes.rows.length > 0) {
+            await client.query(
+                'UPDATE kpis SET actual_value = $1, last_updated = $2 WHERE id = $3',
+                [latestRes.rows[0].value, latestRes.rows[0].date_recorded, id]
+            );
+        }
+
+        // 3. Mark notification as completed for THIS SPECIFIC DATE
+        await client.query(
+            "UPDATE notifications SET status = 'completed' WHERE kpi_id = $1 AND target_date = $2",
+            [id, targetDate]
         );
 
         await client.query('COMMIT');
@@ -705,6 +929,15 @@ app.post('/api/kpis/:id/entries', async (req, res) => {
                 'UPDATE kpis SET actual_value = $1, last_updated = $2 WHERE id = $3',
                 [latestRes.rows[0].value, latestRes.rows[0].date_recorded, id]
             );
+
+            // SYNC: Resolve notification regardless of date (even if it's in the past)
+            // We use the input date directly to ensure we match the notification's target_date
+            if (date) {
+                await client.query(
+                    "UPDATE notifications SET status = 'completed' WHERE kpi_id = $1 AND target_date = $2",
+                    [id, date]
+                );
+            }
         }
 
         await client.query('COMMIT');
@@ -750,6 +983,14 @@ app.put('/api/entries/:id', async (req, res) => {
             await client.query(
                 'UPDATE kpis SET actual_value = $1, last_updated = $2 WHERE id = $3',
                 [latestRes.rows[0].value, latestRes.rows[0].date_recorded, kpiId]
+            );
+        }
+
+        // SYNC: Resolve notification for the processed date
+        if (date) {
+            await client.query(
+                "UPDATE notifications SET status = 'completed' WHERE kpi_id = $1 AND target_date = $2",
+                [kpiId, date]
             );
         }
 

@@ -41,7 +41,7 @@ export function AppSidebar({ isCollapsed, onToggle }: AppSidebarProps) {
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
         {!isCollapsed && (
-          <div className="w-full text-right font-bold text-sidebar-foreground text-lg">IT-Blocks</div>
+          <div className="w-full text-right font-bold text-sidebar-foreground text-lg">نظام القياس</div>
         )}
         <button
           onClick={onToggle}
@@ -64,7 +64,7 @@ export function AppSidebar({ isCollapsed, onToggle }: AppSidebarProps) {
             }
           >
             <Plus className="w-5 h-5 flex-shrink-0" />
-            {!isCollapsed && <span className="flex-1 text-right">إضافة مؤشر جديد</span>}
+            {!isCollapsed && <span className="flex-1 text-right">بناء بطاقات الأداء المتوازن</span>}
           </NavLink>
         </div>
         <ul className="space-y-1 px-2">

@@ -23,14 +23,14 @@ export default function Reports() {
         .map((row: any, index: number) => ({
           id: index.toString(),
           perspective: row.perspective,
-          perspectiveCompletion: row.perspective_completion || 0,
+          perspectiveCompletion: row.perspective_completion ?? null, // Preserve null
           goal: row.goal_name,
-          goalCompletion: row.goal_completion || 0,
+          goalCompletion: row.goal_completion ?? null, // Preserve null
           goalWeight: `${row.goal_rate || 0}%`,
           indicator: row.indicator,
           indicatorCode: `KPI-${index + 1}`,
           weight: `${row.kpi_weight}%`,
-          completion: row.achievement || 0,
+          completion: row.achievement, // Preserve null
           status: row.status, // Add status from backend
           target: row.target,
           value: row.actual,

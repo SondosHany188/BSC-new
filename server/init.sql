@@ -42,5 +42,6 @@ CREATE TABLE kpis (
     period VARCHAR(50),
     weight DECIMAL(5,2) DEFAULT 0,
     direction VARCHAR(10) DEFAULT 'up', -- 'up' or 'down'
+    created_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(name, goal_id)
 );

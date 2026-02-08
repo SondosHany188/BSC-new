@@ -41,6 +41,7 @@ export function DepartmentsProvider({ children }: { children: ReactNode }) {
             children: [
               { id: `${id}-indicators`, label: "١- المؤشرات", href: `/${id}/indicators` },
               { id: `${id}-reports`, label: "٢- التقارير", href: `/${id}/reports` },
+              { id: `${id}-strategic-map`, label: "٣- الخريطة الاستراتيجية", href: `/${id}/strategic-map` },
             ]
           };
         }

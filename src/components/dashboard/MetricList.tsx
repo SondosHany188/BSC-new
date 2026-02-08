@@ -103,7 +103,8 @@ export function MetricList() {
         }
 
         const goalWeight = Number(row.goal_rate) || 0;
-        const goalStatus = row.goal_completion >= 100 ? "green" : row.goal_completion >= 70 ? "yellow" : "red";
+        const goalCompletion = row.goal_completion;
+        const goalStatus = goalCompletion === null ? "gray" : goalCompletion >= 100 ? "green" : goalCompletion >= 70 ? "yellow" : "red";
 
         // Update top goal tracking for perspective status
         if (!perspectiveTopGoal[catId] || goalWeight > perspectiveTopGoal[catId].weight) {
@@ -116,7 +117,7 @@ export function MetricList() {
             id: row.goal_id.toString(),
             name: row.goal_name,
             color: goalStatus,
-            completion: row.goal_completion || 0,
+            completion: row.goal_completion ?? null, // Preserve null
             items: []
           };
           categoryMap[catId].subcategories?.push(sub);
@@ -127,7 +128,7 @@ export function MetricList() {
           name: row.indicator,
           code: `KPI-${row.kpi_id}`,
           period: periodMap[row.period?.toLowerCase()] || row.period || "سنوي",
-          completion: Math.round(row.achievement),
+          completion: row.achievement !== null ? Math.round(row.achievement) : null, // Preserve null
           status: row.status,
           target: row.target,
           currentValue: row.actual,
@@ -241,7 +242,7 @@ export function MetricList() {
                       <div className="flex items-center gap-2 mr-4 ml-2">
                         <span className="text-[10px] text-muted-foreground whitespace-nowrap">نسبة إنجاز الهدف:</span>
                         <span className={cn("text-xs font-bold px-2 py-0.5 rounded bg-background border border-border", statusColorMap[sub.color as keyof typeof statusColorMap])}>
-                          {Number(sub.completion).toFixed(1)}%
+                          {sub.completion !== null ? `${Number(sub.completion).toFixed(1)}%` : "-"}
                         </span>
                       </div>
                     </button>
@@ -252,18 +253,32 @@ export function MetricList() {
                         <table className="w-full text-xs border border-border rounded">
                           <thead>
                             <tr className="bg-muted/50">
-                              <th className="px-2 py-1.5 text-center">خيارات</th>
-                              <th className="px-2 py-1.5 text-right border-l border-border">الفترة الزمنية</th>
-                              <th className="px-2 py-1.5 text-center border-l border-border">نسبة الإنجاز</th>
+                              <th className="px-2 py-1.5 text-right border-l border-border">الاسم</th>
                               <th className="px-2 py-1.5 text-center border-l border-border">المستهدف</th>
                               <th className="px-2 py-1.5 text-center border-l border-border">القيمة الحالية</th>
-                              <th className="px-2 py-1.5 text-right">الاسم</th>
+                              <th className="px-2 py-1.5 text-center border-l border-border">نسبة الإنجاز</th>
+                              <th className="px-2 py-1.5 text-right border-l border-border">الفترة الزمنية</th>
+                              <th className="px-2 py-1.5 text-center border-l border-border">خيارات</th>
                             </tr>
                           </thead>
                           <tbody>
                             {sub.items.map((item) => (
                               <tr key={item.id} className="border-t border-border hover:bg-muted/30">
-                                <td className="px-2 py-1.5 text-center">
+                                <td className="px-2 py-1.5 text-right border-l border-border">
+                                  <span className="text-foreground font-medium">{item.name}</span>
+                                </td>
+                                <td className="px-2 py-1.5 text-center border-l border-border font-medium text-primary">{item.target}</td>
+                                <td className="px-2 py-1.5 text-center border-l border-border font-medium text-success">
+                                  {item.currentValue !== null ? item.currentValue : "-"}
+                                </td>
+                                <td className="px-2 py-1.5 text-center border-l border-border font-bold">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <span>{item.completion !== null ? `${item.completion}%` : "-"}</span>
+                                    <Circle className={cn("w-2 h-2", statusColorMap[item.status as keyof typeof statusColorMap])} fill="currentColor" />
+                                  </div>
+                                </td>
+                                <td className="px-2 py-1.5 text-right border-l border-border">{item.period}</td>
+                                <td className="px-2 py-1.5 text-center border-l border-border">
                                   <div className="flex items-center justify-center gap-1">
                                     <HistoryDialog
                                       kpiId={item.id}
@@ -285,18 +300,6 @@ export function MetricList() {
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
-                                </td>
-                                <td className="px-2 py-1.5 text-right border-l border-border">{item.period}</td>
-                                <td className="px-2 py-1.5 text-center border-l border-border font-bold">
-                                  <div className="flex items-center justify-center gap-1">
-                                    <span>{item.completion}%</span>
-                                    <Circle className={cn("w-2 h-2", statusColorMap[item.status as keyof typeof statusColorMap])} fill="currentColor" />
-                                  </div>
-                                </td>
-                                <td className="px-2 py-1.5 text-center border-l border-border font-medium text-primary">{item.target}</td>
-                                <td className="px-2 py-1.5 text-center border-l border-border font-medium text-success">{item.currentValue}</td>
-                                <td className="px-2 py-1.5 text-right">
-                                  <span className="text-foreground font-medium">{item.name}</span>
                                 </td>
                               </tr>
                             ))}

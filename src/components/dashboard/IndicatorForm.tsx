@@ -133,7 +133,7 @@ export function IndicatorForm({ initialKpiId }: { initialKpiId?: number | null }
     if (!deptId || !pName) return;
 
     try {
-      const response = await fetch(`http://localhost:3002/api/goals?departmentId=${deptId}&perspectiveName=${encodeURIComponent(pName)}`);
+      const response = await fetch(`http://localhost:3002/api/goals?department_id=${deptId}&perspectiveName=${encodeURIComponent(pName)}`);
       const data = await response.json();
       setExistingGoals(data);
     } catch (err) {
@@ -629,8 +629,8 @@ export function IndicatorForm({ initialKpiId }: { initialKpiId?: number | null }
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                <div className="md:col-span-9">
+              <div className="grid grid-cols-1 gap-4">
+                <div>
                   {isNewGoal ? (
                     <Input
                       value={goalName}
@@ -661,19 +661,88 @@ export function IndicatorForm({ initialKpiId }: { initialKpiId?: number | null }
                     </Select>
                   )}
                 </div>
-                <div className="md:col-span-3">
-                  <div className="relative">
-                    <Input
-                      type="number"
-                      value={goalWeight}
-                      onChange={(e) => setGoalWeight(e.target.value)}
-                      placeholder="الأهمية"
-                      readOnly={!isNewGoal}
-                      className="text-center h-11 font-bold bg-background pr-8"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">%</span>
+
+                {isNewGoal && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold pr-1">وزن الهدف الحالي</Label>
+                    <div className="flex gap-2 items-center">
+                      <div className="relative flex-1">
+                        <Input
+                          type="number"
+                          value={goalWeight}
+                          onChange={(e) => setGoalWeight(e.target.value)}
+                          placeholder="الأهمية"
+                          className="text-center h-11 font-bold bg-background pr-8"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">%</span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 px-3"
+                        onClick={async () => {
+                          if (!goalName.trim() || !selectedDepartment || !selectedPerspective) {
+                            alert("يرجى إدخال اسم الهدف واختيار الإدارة والمنظور");
+                            return;
+                          }
+                          if (!goalWeight || Number(goalWeight) <= 0) {
+                            alert("يرجى إدخال وزن الهدف");
+                            return;
+                          }
+
+                          try {
+                            const response = await fetch("http://localhost:3002/api/goals", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                name: goalName.trim(),
+                                department_id: Number(selectedDepartment),
+                                perspective: selectedPerspective,
+                                weight: Number(goalWeight)
+                              })
+                            });
+
+                            if (response.ok) {
+                              alert("تم حفظ الهدف بنجاح");
+                              // Refresh goals list using the shared function
+                              await fetchExistingGoals(selectedDepartment, selectedPerspective);
+
+                              // Switch to selection mode so the user can link KPIs
+                              setIsNewGoal(false);
+                            } else {
+                              const errorData = await response.json().catch(() => ({ error: "فشل في قراءة استجابة الخادم" }));
+                              console.error("Backend Error Details:", errorData);
+                              alert(`فشل حفظ الهدف: ${errorData.details || errorData.error || "خطأ غير معروف"}`);
+                            }
+                          } catch (err: any) {
+                            console.error("Fetch Exception Details:", err);
+                            alert(`خطأ فني: ${err.message || "لا يمكن الاتصال بالخادم"}\nيرجى التحقق من تشغيل Backend.`);
+                          }
+                        }}
+                      >
+                        <Save className="w-3.5 h-3.5 ml-1" />
+                        حفظ
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {!isNewGoal && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold pr-1">وزن الهدف الحالي</Label>
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        value={goalWeight}
+                        onChange={(e) => setGoalWeight(e.target.value)}
+                        placeholder="الأهمية"
+                        readOnly={true}
+                        className="text-center h-11 font-bold bg-background pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">%</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
